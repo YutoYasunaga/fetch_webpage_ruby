@@ -5,6 +5,7 @@ require 'net/http'
 require 'nokogiri'
 require 'open-uri'
 
+# Define class for webpage crawler
 class WebpageCrawler
   SOURCE_FOLDER = 'sources'
   ERROR_MAX_LENGTH = 100
@@ -14,16 +15,16 @@ class WebpageCrawler
   end
 
   def fetch
-    puts "\nFetching #{@uri}..."
+    puts "\nFetching #{@uri}...".green
 
     source = get_html(@uri)
     contents = Nokogiri::HTML(source)
     @img_tags, @js_tags, @css_tags = get_asset_tags(contents)
     save_contents(contents)
 
-    puts '✅ Done'
+    puts '✅ Done'.green
   rescue StandardError => e
-    puts "❌ Error while fetching #{@uri}: #{e.message}"
+    puts "❌ Error while fetching #{@uri}: #{e.message}".red
   end
 
   private
@@ -51,7 +52,7 @@ class WebpageCrawler
     # Create source folder if it doesn't exists
     FileUtils.mkdir_p(SOURCE_FOLDER) unless Dir.exist?(SOURCE_FOLDER)
 
-    # Create source folder of specific web page to contain assets, recreate it if exists
+    # Create source folder of specific webpage to contain assets, recreate it if exists
     file_name = "#{@uri.host}#{@uri.path}.html".tr('/', '_')
     @source_path = "#{SOURCE_FOLDER}/#{file_name.sub('.html', '')}"
     FileUtils.rm_rf(@source_path) if Dir.exist?(@source_path)
@@ -114,7 +115,18 @@ class WebpageCrawler
   end
 end
 
-# Loop all arguments from command line and fetch web page
+# Add methods to print colored string to terminal
+class String
+  def red
+    "\e[31m#{self}\e[0m"
+  end
+
+  def green
+    "\e[32m#{self}\e[0m"
+  end
+end
+
+# Loop all arguments from command line and fetch webpage
 ARGV.each do |url|
   WebpageCrawler.new(url).fetch
 end
