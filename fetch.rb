@@ -21,10 +21,10 @@ class WebpageCrawler
     source = get_html(@uri)
     contents = Nokogiri::HTML(source)
 
-    puts "\nsite: #{@uri}"
-    puts "num_links: #{count_links(contents)}"
-    puts "images: #{count_images(contents)}"
-    puts "last_fetched: #{last_fetch}"
+    puts "\nsite: #{@uri}".green
+    puts "num_links: #{count_links(contents)}".green
+    puts "images: #{count_images(contents)}".green
+    puts "last_fetched: #{last_fetch}".green
 
     save_logs
   rescue StandardError => e
