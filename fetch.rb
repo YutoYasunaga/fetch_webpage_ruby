@@ -3,24 +3,43 @@
 require 'fileutils'
 require 'net/http'
 require 'nokogiri'
+require 'optparse'
 require 'open-uri'
 
 # Define class for webpage crawler
 class WebpageCrawler
   SOURCE_FOLDER = 'sources'
+  LOG_FOLDER = 'logs'
   ERROR_MAX_LENGTH = 100
 
   def initialize(uri)
     @uri = URI.parse(uri.chomp('/'))
   end
 
-  def fetch
+  # Fetch and get page meta data
+  def fetch_and_get_metadata
+    source = get_html(@uri)
+    contents = Nokogiri::HTML(source)
+
+    puts "\nsite: #{@uri}"
+    puts "num_links: #{count_links(contents)}"
+    puts "images: #{count_images(contents)}"
+    puts "last_fetched: #{last_fetch}"
+
+    save_logs
+  rescue StandardError => e
+    puts "❌ Error while fetching #{@uri}: #{e.message}".red
+  end
+
+  # Fetch and download page
+  def fetch_and_download
     puts "\nFetching #{@uri}...".green
 
     source = get_html(@uri)
     contents = Nokogiri::HTML(source)
     @img_tags, @js_tags, @css_tags = get_asset_tags(contents)
     save_contents(contents)
+    save_logs
 
     puts '✅ Done'.green
   rescue StandardError => e
@@ -30,10 +49,10 @@ class WebpageCrawler
   private
 
   # Get HTML from URL
-  def get_html(url)
-    res = Net::HTTP.get_response(url)
+  def get_html(uri)
+    res = Net::HTTP.get_response(uri)
     # If response code is redirect, update the URL to the location header of the response
-    url = URI.parse(res['location']) if %w[301 302 307].include?(res.code)
+    url = %w[301 302 307].include?(res.code) ? URI.parse(res['location']) : uri
 
     Net::HTTP.get url
   end
@@ -47,14 +66,23 @@ class WebpageCrawler
     [img_tags, js_tags, css_tags]
   end
 
+  # Count links
+  def count_links(contents)
+    contents.xpath('//a[@href]').count
+  end
+
+  # Count images
+  def count_images(contents)
+    contents.xpath('//img[@src]').count
+  end
+
   # Save contents (assets and result html file)
   def save_contents(contents)
     # Create source folder if it doesn't exists
     FileUtils.mkdir_p(SOURCE_FOLDER) unless Dir.exist?(SOURCE_FOLDER)
 
     # Create source folder of specific webpage to contain assets, recreate it if exists
-    file_name = "#{@uri.host}#{@uri.path}.html".tr('/', '_')
-    @source_path = "#{SOURCE_FOLDER}/#{file_name.sub('.html', '')}"
+    @source_path = "#{SOURCE_FOLDER}/#{file_name}"
     FileUtils.rm_rf(@source_path) if Dir.exist?(@source_path)
     FileUtils.mkdir_p(@source_path)
 
@@ -63,7 +91,7 @@ class WebpageCrawler
     save_asset(@css_tags, "#{@source_path}/css")
 
     # Write content to result file
-    File.open(file_name, 'w') do |file|
+    File.open("#{file_name}.html", 'w') do |file|
       file.write(contents.to_html)
     end
   end
@@ -113,6 +141,28 @@ class WebpageCrawler
     data = get_html(uri)
     File.open(destination, 'wb') { |f| f.write(data) } if data
   end
+
+  # Save logs
+  def save_logs
+    # Create log folder if it doesn't exists
+    FileUtils.mkdir_p(LOG_FOLDER) unless Dir.exist?(LOG_FOLDER)
+
+    File.open("#{LOG_FOLDER}/#{file_name}.txt", 'a+') do |file|
+      file.write("#{Time.now.utc.strftime("%a %b %d %Y %H:%M UTC")}\n")
+    end
+  end
+
+  # Get file_name of fetched page
+  def file_name
+    "#{@uri.host}#{@uri.path}".tr('/', '_')
+  end
+
+  # Get last fetched time
+  def last_fetch
+    file = "#{LOG_FOLDER}/#{file_name}.txt"
+    result = File.open(file, 'r') { |f| f.readlines.last } if File.exist?(file)
+    result || 'N/A'
+  end
 end
 
 # Add methods to print colored string to terminal
@@ -126,7 +176,17 @@ class String
   end
 end
 
-# Loop all arguments from command line and fetch webpage
-ARGV.each do |url|
-  WebpageCrawler.new(url).fetch
+# Get page urls and options from arguments
+options = {}
+pages = OptionParser.new do |parser|
+  parser.on("--metadata", "Show metadata") do |v|
+    options[:metadata] = v
+  end
+end.parse!
+
+# Loop all page urls from arguments and run task
+if options[:metadata]
+  pages.each { |page| WebpageCrawler.new(page).fetch_and_get_metadata }
+else 
+  pages.each { |page| WebpageCrawler.new(page).fetch_and_download }
 end
